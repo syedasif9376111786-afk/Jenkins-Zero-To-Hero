@@ -1,22 +1,22 @@
 pipeline {
- agent {
-    docker {
-        image 'abhishekf5/maven-abhishek-docker-agent:v1'
-        args '--user root -v /var/run/docker.sock:/var/run/docker.sock'
+    agent {
+        docker {
+            image 'abhishekf5/maven-abhishek-docker-agent:v1'
+            args '--user root -v /var/run/docker.sock:/var/run/docker.sock'
+        }
     }
-}
 
     stages {
 
         stage('Checkout') {
             steps {
-                sh 'echo passed'
+                echo 'Source code checkout completed'
+                sh 'ls -ltr'
             }
         }
 
         stage('Build and Test') {
             steps {
-                sh 'ls -ltr'
                 sh '''
                     cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
                     mvn clean package
@@ -26,7 +26,7 @@ pipeline {
 
         stage('Static Code Analysis') {
             environment {
-                SONAR_URL = "http://23.20.34.80:9000"
+                SONAR_URL = 'http://23.20.34.80:9000'
             }
 
             steps {
@@ -38,26 +38,38 @@ pipeline {
                 ]) {
                     sh '''
                         cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
+
                         mvn sonar:sonar \
-                        -Dsonar.login=$SONAR_AUTH_TOKEN \
-                        -Dsonar.host.url=${SONAR_URL}
+                          -Dsonar.token=$SONAR_AUTH_TOKEN \
+                          -Dsonar.host.url=$SONAR_URL
                     '''
                 }
             }
         }
 
-        stage('Build and Push Docker Image') {
+        stage('Build Docker Image') {
+            environment {
+                DOCKER_IMAGE = "syedasiff5/ultimate-cicd:${BUILD_NUMBER}"
+            }
+
+            steps {
+                sh '''
+                    cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
+
+                    docker build \
+                      -t ${DOCKER_IMAGE} \
+                      .
+                '''
+            }
+        }
+
+        stage('Push Docker Image') {
             environment {
                 DOCKER_IMAGE = "syedasiff5/ultimate-cicd:${BUILD_NUMBER}"
             }
 
             steps {
                 script {
-                    sh '''
-                        cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
-                        docker build -t ${DOCKER_IMAGE} .
-                    '''
-
                     def dockerImage = docker.image("${DOCKER_IMAGE}")
 
                     docker.withRegistry(
@@ -72,8 +84,8 @@ pipeline {
 
         stage('Update Deployment File') {
             environment {
-                GIT_REPO_NAME = "Jenkins-Zero-To-Hero"
-                GIT_USER_NAME = "syedasif9376111786-afk"
+                GIT_REPO_NAME = 'Jenkins-Zero-To-Hero'
+                GIT_USER_NAME = 'syedasif9376111786-afk'
             }
 
             steps {
@@ -84,21 +96,31 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        git config user.email "your-email@example.com"
+                        git config user.email "syedasif@example.com"
                         git config user.name "Syed Asif"
 
-                        sed -i "s/replaceImageTag/${BUILD_NUMBER}/g" \
-                        java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+                        DEPLOYMENT_FILE=java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
 
-                        git add \
-                        java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+                        sed -i "s/replaceImageTag/${BUILD_NUMBER}/g" ${DEPLOYMENT_FILE}
 
-                        git commit -m "Update deployment image to version ${BUILD_NUMBER}" || true
+                        git add ${DEPLOYMENT_FILE}
 
-                        git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
+                        git commit -m "Update deployment image to version ${BUILD_NUMBER}"
+
+                        git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
                     '''
                 }
             }
+        }
+    }
+
+    post {
+        success {
+            echo 'CI/CD Pipeline completed successfully!'
+        }
+
+        failure {
+            echo 'Pipeline failed. Check the Jenkins Console Output.'
         }
     }
 }
