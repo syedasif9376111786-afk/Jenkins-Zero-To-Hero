@@ -10,9 +10,11 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                sh 'echo "Source code checkout successful"'
-                sh 'pwd'
-                sh 'ls -la'
+                sh '''
+                    echo "Source code checkout successful"
+                    pwd
+                    ls -la
+                '''
             }
         }
 
@@ -84,8 +86,13 @@ pipeline {
                     )
                 ]) {
                     sh '''
+                        git config --global --add safe.directory "$WORKSPACE"
+
                         git config user.email "your-email@example.com"
                         git config user.name "Syed Asif"
+
+                        git checkout main || git checkout -b main origin/main
+                        git pull origin main
 
                         sed -i "s|syedasiff5/ultimate-cicd:replaceImageTag|syedasiff5/ultimate-cicd:${BUILD_NUMBER}|g" \
                         java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
@@ -93,11 +100,12 @@ pipeline {
                         git add \
                         java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
 
-                        git commit -m "Update deployment image to version ${BUILD_NUMBER}" || true
+                        git diff --cached --quiet || \
+                        git commit -m "Update deployment image to version ${BUILD_NUMBER}"
 
                         git push \
                         https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git \
-                        HEAD:main
+                        main
                     '''
                 }
             }
