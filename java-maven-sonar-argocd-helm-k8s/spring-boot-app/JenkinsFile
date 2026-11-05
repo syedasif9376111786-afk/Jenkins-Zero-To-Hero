@@ -1,3 +1,4 @@
+```groovy
 pipeline {
     agent {
         docker {
@@ -10,7 +11,8 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                sh 'echo "Checkout successful"'
+                sh 'echo "Checkout completed"'
+                sh 'ls -la'
             }
         }
 
@@ -39,33 +41,25 @@ pipeline {
                         cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
 
                         mvn sonar:sonar \
-                        -Dsonar.login=$SONAR_AUTH_TOKEN \
-                        -Dsonar.host.url=${SONAR_URL}
+                          -Dsonar.login=$SONAR_AUTH_TOKEN \
+                          -Dsonar.host.url=$SONAR_URL
                     '''
                 }
             }
         }
 
-        stage('Build Docker Image') {
-            environment {
-                DOCKER_IMAGE = "syedasiff5/ultimate-cicd:${BUILD_NUMBER}"
-            }
-
-            steps {
-                sh '''
-                    cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
-                    docker build -t ${DOCKER_IMAGE} .
-                '''
-            }
-        }
-
-        stage('Push Docker Image') {
+        stage('Build and Push Docker Image') {
             environment {
                 DOCKER_IMAGE = "syedasiff5/ultimate-cicd:${BUILD_NUMBER}"
             }
 
             steps {
                 script {
+                    sh '''
+                        cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
+                        docker build -t ${DOCKER_IMAGE} .
+                    '''
+
                     def dockerImage = docker.image("${DOCKER_IMAGE}")
 
                     docker.withRegistry(
@@ -78,51 +72,55 @@ pipeline {
             }
         }
 
-stage('Update Deployment File') {
-    environment {
-        GIT_REPO_NAME = "Jenkins-Zero-To-Hero"
-        GIT_USER_NAME = "syedasif9376111786-afk"
-        DEPLOYMENT_FILE = "java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml"
-    }
+        stage('Update Deployment File') {
+            environment {
+                GIT_REPO_NAME = "Jenkins-Zero-To-Hero"
+                GIT_USER_NAME = "syedasif9376111786-afk"
+                DEPLOYMENT_FILE = "java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml"
+            }
 
-    steps {
-        withCredentials([
-            string(
-                credentialsId: 'github',
-                variable: 'GITHUB_TOKEN'
-            )
-        ]) {
-            sh '''
-                set -e
+            steps {
+                withCredentials([
+                    string(
+                        credentialsId: 'github',
+                        variable: 'GITHUB_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        set -e
 
-                echo "===== Checking Git status ====="
-                git status
+                        echo "===== Checking Git status ====="
+                        git status
 
-                echo "===== Switching to main branch ====="
-                git fetch origin main
-                git checkout -B main origin/main
+                        echo "===== Switching to main branch ====="
+                        git fetch origin main
+                        git checkout -B main origin/main
 
-                git config user.email "your-email@example.com"
-                git config user.name "Syed Asif"
+                        git config user.email "your-email@example.com"
+                        git config user.name "Syed Asif"
 
-                echo "===== Image before update ====="
-                grep "image:" "$DEPLOYMENT_FILE"
+                        echo "===== Image before update ====="
+                        grep "image:" "$DEPLOYMENT_FILE"
 
-                echo "===== Updating image tag ====="
-                sed -i "s|image: syedasiff5/ultimate-cicd:.*|image: syedasiff5/ultimate-cicd:${BUILD_NUMBER}|g" "$DEPLOYMENT_FILE"
+                        echo "===== Updating image tag ====="
 
-                echo "===== Image after update ====="
-                grep "image:" "$DEPLOYMENT_FILE"
+                        sed -i "s|image: syedasiff5/ultimate-cicd:.*|image: syedasiff5/ultimate-cicd:${BUILD_NUMBER}|g" "$DEPLOYMENT_FILE"
 
-                echo "===== Git diff ====="
-                git diff "$DEPLOYMENT_FILE"
+                        echo "===== Image after update ====="
+                        grep "image:" "$DEPLOYMENT_FILE"
 
-                git add "$DEPLOYMENT_FILE"
+                        echo "===== Git diff ====="
+                        git diff "$DEPLOYMENT_FILE"
 
-                git commit -m "Update deployment image to version ${BUILD_NUMBER}"
+                        git add "$DEPLOYMENT_FILE"
 
-                git push origin main
-            '''
+                        git commit -m "Update deployment image to version ${BUILD_NUMBER}"
+
+                        git push origin main
+                    '''
+                }
+            }
         }
     }
 }
+```
