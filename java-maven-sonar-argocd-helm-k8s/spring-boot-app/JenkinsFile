@@ -10,8 +10,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                echo 'Source code checkout completed'
-                sh 'ls -ltr'
+                sh 'echo "Checkout successful"'
             }
         }
 
@@ -26,7 +25,7 @@ pipeline {
 
         stage('Static Code Analysis') {
             environment {
-                SONAR_URL = 'http://23.20.34.80:9000'
+                SONAR_URL = "http://23.20.34.80:9000"
             }
 
             steps {
@@ -40,8 +39,8 @@ pipeline {
                         cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
 
                         mvn sonar:sonar \
-                          -Dsonar.token=$SONAR_AUTH_TOKEN \
-                          -Dsonar.host.url=$SONAR_URL
+                        -Dsonar.login=$SONAR_AUTH_TOKEN \
+                        -Dsonar.host.url=${SONAR_URL}
                     '''
                 }
             }
@@ -55,10 +54,7 @@ pipeline {
             steps {
                 sh '''
                     cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
-
-                    docker build \
-                      -t ${DOCKER_IMAGE} \
-                      .
+                    docker build -t ${DOCKER_IMAGE} .
                 '''
             }
         }
@@ -82,10 +78,10 @@ pipeline {
             }
         }
 
-        stage('Update Deployment File') {
+        stage('Update Kubernetes Manifest') {
             environment {
-                GIT_REPO_NAME = 'Jenkins-Zero-To-Hero'
-                GIT_USER_NAME = 'syedasif9376111786-afk'
+                GIT_REPO_NAME = "Jenkins-Zero-To-Hero"
+                GIT_USER_NAME = "syedasif9376111786-afk"
             }
 
             steps {
@@ -96,31 +92,25 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        git config user.email "syedasif@example.com"
+                        git config user.email "your-email@example.com"
                         git config user.name "Syed Asif"
 
-                        DEPLOYMENT_FILE=java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+                        sed -i "s|image: syedasiff5/ultimate-cicd:.*|image: syedasiff5/ultimate-cicd:${BUILD_NUMBER}|" \
+                        java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
 
-                        sed -i "s/replaceImageTag/${BUILD_NUMBER}/g" ${DEPLOYMENT_FILE}
+                        echo "Updated image:"
+                        grep "image:" \
+                        java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
 
-                        git add ${DEPLOYMENT_FILE}
+                        git add \
+                        java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
 
-                        git commit -m "Update deployment image to version ${BUILD_NUMBER}"
+                        git commit -m "Update deployment image to version ${BUILD_NUMBER}" || true
 
-                        git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
+                        git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
                     '''
                 }
             }
-        }
-    }
-
-    post {
-        success {
-            echo 'CI/CD Pipeline completed successfully!'
-        }
-
-        failure {
-            echo 'Pipeline failed. Check the Jenkins Console Output.'
         }
     }
 }
