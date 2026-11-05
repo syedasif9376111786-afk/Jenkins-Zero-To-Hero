@@ -78,39 +78,51 @@ pipeline {
             }
         }
 
-        stage('Update Kubernetes Manifest') {
-            environment {
-                GIT_REPO_NAME = "Jenkins-Zero-To-Hero"
-                GIT_USER_NAME = "syedasif9376111786-afk"
-            }
+stage('Update Deployment File') {
+    environment {
+        GIT_REPO_NAME = "Jenkins-Zero-To-Hero"
+        GIT_USER_NAME = "syedasif9376111786-afk"
+        DEPLOYMENT_FILE = "java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml"
+    }
 
-            steps {
-                withCredentials([
-                    string(
-                        credentialsId: 'github',
-                        variable: 'GITHUB_TOKEN'
-                    )
-                ]) {
-                    sh '''
-                        git config user.email "your-email@example.com"
-                        git config user.name "Syed Asif"
+    steps {
+        withCredentials([
+            string(
+                credentialsId: 'github',
+                variable: 'GITHUB_TOKEN'
+            )
+        ]) {
+            sh '''
+                set -e
 
-                        sed -i "s|image: syedasiff5/ultimate-cicd:.*|image: syedasiff5/ultimate-cicd:${BUILD_NUMBER}|" \
-                        java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+                echo "===== Checking Git status ====="
+                git status
 
-                        echo "Updated image:"
-                        grep "image:" \
-                        java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+                echo "===== Switching to main branch ====="
+                git fetch origin main
+                git checkout -B main origin/main
 
-                        git add \
-                        java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+                git config user.email "your-email@example.com"
+                git config user.name "Syed Asif"
 
-                        git commit -m "Update deployment image to version ${BUILD_NUMBER}" || true
+                echo "===== Image before update ====="
+                grep "image:" "$DEPLOYMENT_FILE"
 
-                        git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
-                    '''
-                }
-            }
+                echo "===== Updating image tag ====="
+                sed -i "s|image: syedasiff5/ultimate-cicd:.*|image: syedasiff5/ultimate-cicd:${BUILD_NUMBER}|g" "$DEPLOYMENT_FILE"
+
+                echo "===== Image after update ====="
+                grep "image:" "$DEPLOYMENT_FILE"
+
+                echo "===== Git diff ====="
+                git diff "$DEPLOYMENT_FILE"
+
+                git add "$DEPLOYMENT_FILE"
+
+                git commit -m "Update deployment image to version ${BUILD_NUMBER}"
+
+                git push origin main
+            '''
         }
     }
 }
