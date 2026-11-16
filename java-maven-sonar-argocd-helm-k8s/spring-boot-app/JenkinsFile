@@ -83,32 +83,44 @@ pipeline {
         }
 
         // UPDATED DOCKER BUILD STAGE
-        stage('Build Docker Image') {
-            steps {
-                echo 'Building Docker image...'
+       
+stage('Build Docker Image') {
+    steps {
+        echo 'Building Docker image...'
 
-                script {
-                    def appPath = "${WORKSPACE}/${APP_DIR}"
+        script {
+            def appPath = "${WORKSPACE}/${APP_DIR}"
 
-                    sh """
-                        set -e
+            sh """
+                set -e
 
-                        echo "Cleaning SonarQube temporary files..."
+                echo "Checking Docker ignore configuration..."
 
-                        sudo rm -rf '${appPath}/.sonar' || true
+                if [ ! -f '${appPath}/.dockerignore' ]; then
+                    cat > '${appPath}/.dockerignore' <<'EOF'
+.sonar
+**/.sonar
+target/sonar
+**/target/sonar
+EOF
+                fi
 
-                        echo "Building Docker image..."
+                echo "Docker ignore configuration:"
+                cat '${appPath}/.dockerignore'
 
-                        docker build \
-                            --no-cache \
-                            -t ${DOCKER_IMAGE}:${BUILD_NUMBER} \
-                            '${appPath}'
+                echo "Building Docker image..."
 
-                        echo "Docker image built successfully!"
-                    """
-                }
-            }
+                docker build \
+                    --no-cache \
+                    -t '${DOCKER_IMAGE}:${BUILD_NUMBER}' \
+                    '${appPath}'
+
+                echo "Docker image built successfully!"
+            """
         }
+    }
+}
+
 
         stage('Push Docker Image') {
             steps {
@@ -215,3 +227,4 @@ EOF
         }
     }
 }
+
