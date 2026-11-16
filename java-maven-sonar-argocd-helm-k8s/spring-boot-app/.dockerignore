@@ -1,0 +1,4 @@
+.sonar
+**/.sonar
+target/sonar
+**/target/sonar
