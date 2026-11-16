@@ -60,7 +60,7 @@ pipeline {
 
                 withCredentials([
                     string(
-                        credentialsId: 'sonarqube',
+                        credentialsId: 'Sonarqube',
                         variable: 'SONAR_AUTH_TOKEN'
                     )
                 ]) {
@@ -72,11 +72,12 @@ pipeline {
                           -v jenkins-maven-repo:/root/.m2 \
                           -w "/workspace/$APP_DIR" \
                           -e SONAR_AUTH_TOKEN \
+                          -e SONAR_URL \
                           maven:3.9.9-eclipse-temurin-17 \
-                          mvn -B sonar:sonar \
-                          -Dsonar.projectKey=spring-boot-demo \
-                          -Dsonar.host.url="$SONAR_URL" \
-                          -Dsonar.token="$SONAR_AUTH_TOKEN"
+                          sh -c 'mvn -B sonar:sonar \
+                            -Dsonar.projectKey=spring-boot-demo \
+                            -Dsonar.host.url="$SONAR_URL" \
+                            -Dsonar.token="$SONAR_AUTH_TOKEN"'
                     '''
                 }
             }
@@ -132,7 +133,7 @@ pipeline {
 
                 withCredentials([
                     string(
-                        credentialsId: 'github',
+                        credentialsId: 'GITHUB_TOKEN',
                         variable: 'GITHUB_TOKEN'
                     )
                 ]) {
@@ -143,7 +144,6 @@ pipeline {
                         git config user.email \
                           "syedasif9376111786-afk@users.noreply.github.com"
 
-                        # Update image tag without replacing other YAML content
                         sed -i -E \
                           "s|(image:[[:space:]]*)[^[:space:]]*|\\1$DOCKER_IMAGE:$BUILD_NUMBER|" \
                           "$DEPLOYMENT_FILE"
