@@ -1,3 +1,4 @@
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,8 +15,8 @@ spec:
       labels:
         app: spring-boot-app
     spec:
-    containers:
-  - name: spring-boot-app
-    image: clouddevopshubsyed/ultimate-cicd:5
-    ports:
-      - containerPort: 8080
+      containers:
+        - name: spring-boot-app
+          image: clouddevopshubsyed/ultimate-cicd:5
+          ports:
+            - containerPort: 8080
