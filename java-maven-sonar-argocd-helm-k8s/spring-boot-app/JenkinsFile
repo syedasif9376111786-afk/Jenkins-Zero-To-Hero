@@ -1,38 +1,63 @@
+
 pipeline {
-    agent {
-        docker {
-            image 'abhishekf5/maven-abhishek-docker-agent:v1'
-            args '--user root -v /var/run/docker.sock:/var/run/docker.sock'
-        }
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    environment {
+        SONAR_URL = 'http://100.54.237.43:9000'
+
+        DOCKER_IMAGE = 'clouddevopshubsyed/ultimate-cicd'
+
+        GIT_REPO = 'https://github.com/syedasif9376111786-afk/Jenkins-Zero-To-Hero.git'
+
+        APP_DIR = 'java-maven-sonar-argocd-helm-k8s/spring-boot-app'
+
+        DEPLOYMENT_FILE = 'java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml'
     }
 
     stages {
 
         stage('Checkout Verification') {
             steps {
+                echo 'Verifying GitHub checkout...'
+
                 sh '''
-                    echo "Source code checkout successful"
-                    pwd
+                    echo "Workspace: $WORKSPACE"
                     ls -la
+
+                    test -f "$APP_DIR/pom.xml"
+                    test -f "$APP_DIR/Dockerfile"
+                    test -f "$DEPLOYMENT_FILE"
+
+                    echo "Checkout verification successful"
                 '''
             }
         }
 
         stage('Build and Test') {
             steps {
+                echo 'Building Java application using Maven...'
+
                 sh '''
-                    cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
-                    mvn clean package
+                    docker run --rm \
+                      -v "$WORKSPACE:/workspace" \
+                      -v jenkins-maven-repo:/root/.m2 \
+                      -w "/workspace/$APP_DIR" \
+                      maven:3.9.9-eclipse-temurin-17 \
+                      mvn -B clean package
                 '''
             }
         }
 
         stage('Static Code Analysis') {
-            environment {
-                SONAR_URL = 'http://23.20.34.80:9000'
-            }
-
             steps {
+                echo 'Starting SonarQube analysis...'
+
                 withCredentials([
                     string(
                         credentialsId: 'sonarqube',
@@ -40,53 +65,71 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
+                        set +x
 
-                        mvn sonar:sonar \
-                          -Dsonar.login=$SONAR_AUTH_TOKEN \
-                          -Dsonar.host.url=$SONAR_URL
+                        docker run --rm \
+                          -v "$WORKSPACE:/workspace" \
+                          -v jenkins-maven-repo:/root/.m2 \
+                          -w "/workspace/$APP_DIR" \
+                          -e SONAR_AUTH_TOKEN \
+                          maven:3.9.9-eclipse-temurin-17 \
+                          mvn -B sonar:sonar \
+                          -Dsonar.projectKey=spring-boot-demo \
+                          -Dsonar.host.url="$SONAR_URL" \
+                          -Dsonar.token="$SONAR_AUTH_TOKEN"
                     '''
                 }
             }
         }
 
         stage('Build Docker Image') {
-            environment {
-                DOCKER_IMAGE = "syedasiff5/ultimate-cicd:${BUILD_NUMBER}"
-            }
-
             steps {
+                echo 'Building Docker image...'
+
                 sh '''
-                    cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
-                    docker build -t ${DOCKER_IMAGE} .
+                    docker build \
+                      -t "$DOCKER_IMAGE:$BUILD_NUMBER" \
+                      "$APP_DIR"
+
+                    docker tag \
+                      "$DOCKER_IMAGE:$BUILD_NUMBER" \
+                      "$DOCKER_IMAGE:latest"
                 '''
             }
         }
 
         stage('Push Docker Image') {
-            environment {
-                DOCKER_IMAGE = "syedasiff5/ultimate-cicd:${BUILD_NUMBER}"
-            }
-
             steps {
-                script {
-                    docker.withRegistry(
-                        'https://index.docker.io/v1/',
-                        'docker-cred'
-                    ) {
-                        docker.image("${DOCKER_IMAGE}").push()
-                    }
+                echo 'Pushing image to Docker Hub...'
+
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'docker-cred',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        set +x
+
+                        echo "$DOCKER_TOKEN" | docker login \
+                          -u "$DOCKER_USER" \
+                          --password-stdin
+
+                        docker push "$DOCKER_IMAGE:$BUILD_NUMBER"
+
+                        docker push "$DOCKER_IMAGE:latest"
+
+                        docker logout
+                    '''
                 }
             }
         }
 
         stage('Update Kubernetes Deployment') {
-            environment {
-                GIT_REPO_NAME = 'Jenkins-Zero-To-Hero'
-                GIT_USER_NAME = 'syedasif9376111786-afk'
-            }
-
             steps {
+                echo 'Updating Kubernetes deployment manifest...'
+
                 withCredentials([
                     string(
                         credentialsId: 'github',
@@ -94,28 +137,66 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        git config user.email "your-email@example.com"
+                        set +x
+
                         git config user.name "Syed Asif"
+                        git config user.email \
+                          "syedasif9376111786-afk@users.noreply.github.com"
 
-                        DEPLOYMENT_FILE="java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml"
-
+                        # Update image tag without replacing other YAML content
                         sed -i -E \
-                        "s|syedasiff5/ultimate-cicd:[^[:space:]]*|syedasiff5/ultimate-cicd:${BUILD_NUMBER}|g" \
-                        ${DEPLOYMENT_FILE}
+                          "s|(image:[[:space:]]*)[^[:space:]]*|\\1$DOCKER_IMAGE:$BUILD_NUMBER|" \
+                          "$DEPLOYMENT_FILE"
 
-                        echo "Updated deployment file:"
-                        grep -n "image:" ${DEPLOYMENT_FILE}
+                        echo "Updated deployment image:"
+                        grep "image:" "$DEPLOYMENT_FILE"
 
-                        git add ${DEPLOYMENT_FILE}
+                        git add "$DEPLOYMENT_FILE"
 
-                        git commit -m "Update deployment image to version ${BUILD_NUMBER}"
+                        if git diff --cached --quiet; then
+                            echo "No deployment changes found"
+                        else
+                            git commit -m \
+                              "Update Docker image to build $BUILD_NUMBER"
 
-                        git push \
-                        https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git \
-                        HEAD:main
+                            ASKPASS="$(mktemp)"
+                            trap 'rm -f "$ASKPASS"' EXIT
+
+                            cat > "$ASKPASS" <<'EOF'
+#!/bin/sh
+case "$1" in
+    *Username*) echo "$GIT_USERNAME" ;;
+    *Password*) echo "$GIT_TOKEN" ;;
+esac
+EOF
+
+                            chmod 700 "$ASKPASS"
+
+                            export GIT_USERNAME="syedasif9376111786-afk"
+                            export GIT_TOKEN="$GITHUB_TOKEN"
+                            export GIT_ASKPASS="$ASKPASS"
+                            export GIT_TERMINAL_PROMPT=0
+
+                            git push "$GIT_REPO" HEAD:main
+                        fi
                     '''
                 }
             }
+        }
+    }
+
+    post {
+        success {
+            echo 'SUCCESS: CI pipeline completed successfully!'
+            echo "Docker Image: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+        }
+
+        failure {
+            echo 'FAILURE: Check the Jenkins Console Output for the failed stage.'
+        }
+
+        always {
+            echo 'Jenkins pipeline execution completed.'
         }
     }
 }
