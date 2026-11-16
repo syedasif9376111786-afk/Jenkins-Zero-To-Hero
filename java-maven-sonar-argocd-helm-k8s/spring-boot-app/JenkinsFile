@@ -54,34 +54,39 @@ pipeline {
             }
         }
 
-        stage('Static Code Analysis') {
-            steps {
-                echo 'Starting SonarQube analysis...'
+   
+stage('Static Code Analysis') {
+    steps {
+        echo 'Starting SonarQube analysis...'
 
-                withCredentials([
-                    string(
-                        credentialsId: 'Sonarqube',
-                        variable: 'SONAR_AUTH_TOKEN'
-                    )
-                ]) {
-                    sh '''
-                        set +x
+        withCredentials([
+            string(
+                credentialsId: 'Sonarqube',
+                variable: 'SONAR_AUTH_TOKEN'
+            )
+        ]) {
+            sh '''
+                set +x
 
-                        docker run --rm \
-                          -v "$WORKSPACE:/workspace" \
-                          -v jenkins-maven-repo:/root/.m2 \
-                          -w "/workspace/$APP_DIR" \
-                          -e SONAR_AUTH_TOKEN \
-                          -e SONAR_URL \
-                          maven:3.9.9-eclipse-temurin-17 \
-                          sh -c 'mvn -B sonar:sonar \
-                            -Dsonar.projectKey=spring-boot-demo \
-                            -Dsonar.host.url="$SONAR_URL" \
-                            -Dsonar.token="$SONAR_AUTH_TOKEN"'
-                    '''
-                }
-            }
+                docker run --rm \
+                  -v "$WORKSPACE:/workspace" \
+                  -v jenkins-maven-repo:/root/.m2 \
+                  -w "/workspace/$APP_DIR" \
+                  -e SONAR_AUTH_TOKEN \
+                  -e SONAR_URL \
+                  maven:3.9.9-eclipse-temurin-17 \
+                  sh -c '
+                    mvn -B \
+                    org.sonarsource.scanner.maven:sonar-maven-plugin:5.3.0.6276:sonar \
+                    -Dsonar.projectKey=spring-boot-demo \
+                    -Dsonar.host.url="$SONAR_URL" \
+                    -Dsonar.token="$SONAR_AUTH_TOKEN"
+                  '
+            '''
         }
+    }
+}
+
 
         stage('Build Docker Image') {
             steps {
@@ -200,3 +205,4 @@ EOF
         }
     }
 }
+
