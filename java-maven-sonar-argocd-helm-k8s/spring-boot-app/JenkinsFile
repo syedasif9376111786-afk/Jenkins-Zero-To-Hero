@@ -82,22 +82,31 @@ pipeline {
             }
         }
 
+        // UPDATED DOCKER BUILD STAGE
         stage('Build Docker Image') {
             steps {
                 echo 'Building Docker image...'
 
-                sh '''
-                    APP_PATH="$WORKSPACE/$APP_DIR"
+                script {
+                    def appPath = "${WORKSPACE}/${APP_DIR}"
 
-                    # Remove Sonar-generated files if possible
-                    rm -rf "$APP_PATH/.sonar" || true
+                    sh """
+                        set -e
 
-                    # Build Docker image
-                    docker build \
-                      --no-cache \
-                      -t "$DOCKER_IMAGE:$BUILD_NUMBER" \
-                      "$APP_PATH"
-                '''
+                        echo "Cleaning SonarQube temporary files..."
+
+                        sudo rm -rf '${appPath}/.sonar' || true
+
+                        echo "Building Docker image..."
+
+                        docker build \
+                            --no-cache \
+                            -t ${DOCKER_IMAGE}:${BUILD_NUMBER} \
+                            '${appPath}'
+
+                        echo "Docker image built successfully!"
+                    """
+                }
             }
         }
 
